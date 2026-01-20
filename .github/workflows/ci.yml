@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_build:
+        description: "Force full build (web+3d)"
+        required: false
+        default: "false"
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            web:
+              - 'web/**'
+            threeD:
+              - '3d/**'
+            infra:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'scripts/**'
+
+      - name: Restore cached web build (for 3d-only builds)
+        id: web_build_cache
+        uses: actions/cache@v4
+        with:
+          path: web/build
+          key: web-build-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            web-build-${{ runner.os }}-
+
+      - name: Full build (web+3d)
+        if: |
+          github.event.inputs.full_build == 'true' ||
+          steps.changes.outputs.web == 'true' && steps.changes.outputs.threeD == 'true' ||
+          steps.changes.outputs.infra == 'true' ||
+          steps.web_build_cache.outputs.cache-hit != 'true'
+        run: npm run build:all
+
+      - name: Build web only
+        if: |
+          github.event.inputs.full_build != 'true' &&
+          steps.web_build_cache.outputs.cache-hit == 'true' &&
+          steps.changes.outputs.web == 'true' &&
+          steps.changes.outputs.threeD != 'true' &&
+          steps.changes.outputs.infra != 'true'
+        run: npm run build:web
+
+      - name: Build 3d only
+        if: |
+          github.event.inputs.full_build != 'true' &&
+          steps.web_build_cache.outputs.cache-hit == 'true' &&
+          steps.changes.outputs.threeD == 'true' &&
+          steps.changes.outputs.web != 'true' &&
+          steps.changes.outputs.infra != 'true'
+        run: npm run build:3d
+
+      - name: Save web build cache
+        uses: actions/cache@v4
+        with:
+          path: web/build
+          key: web-build-${{ runner.os }}-${{ github.ref_name }}
+
+      - name: Smoke test (run built web + fetch / and /3d/bundle.js)
+        env:
+          PORT: 4173
+          HOST: 127.0.0.1
+          SMOKE_BASE_URL: http://127.0.0.1:4173
+        run: |
+          node web/build &
+          node scripts/smoke-test.mjs
+

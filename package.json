@@ -1,0 +1,28 @@
+{
+  "name": "test_0",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "web",
+    "3d"
+  ],
+  "scripts": {
+    "build:all": "npm run build -w 3d && node scripts/sync-3d-to-web-static.mjs && npm run build -w web",
+    "build:web": "node scripts/sync-3d-to-web-static.mjs && npm run build -w web",
+    "build:3d": "npm run build -w 3d && node scripts/sync-3d-to-web-build.mjs",
+    "preview:web": "npm run preview -w web",
+    "start:web": "npm run start -w web",
+    "start:all": "npm run start:web",
+    "start:3d": "npm run build -w 3d && npm run preview -w 3d -- --port 4174 --host 127.0.0.1",
+    "dev:all": "concurrently -n web,3d -c blue,magenta \"npm run dev:web\" \"npm run dev:3d\"",
+    "dev:web": "npm run dev -w web",
+    "dev:3d": "npm run dev -w 3d"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
