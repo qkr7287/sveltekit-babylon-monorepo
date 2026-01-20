@@ -8,9 +8,10 @@
 	onMount(async () => {
 		if (!canvas) return;
 
-		// 빌드 산출물(web/build/client/3d/bundle.js) 또는 정적 폴더(web/static/3d/bundle.js)에서 로드됩니다.
+		// 기본: 같은 origin의 /3d/bundle.js (web/static/3d 또는 web/build/client/3d)
+		// 하이브리드(dev:all/dev:3d): hooks.server.ts가 window.__THREED_BUNDLE_URL__을 주입해 그걸 우선 사용
 		try {
-			const bundleUrl = new URL('/3d/bundle.js', window.location.origin).toString();
+			const bundleUrl = window.__THREED_BUNDLE_URL__ ?? new URL('/3d/bundle.js', window.location.origin).toString();
 			const mod = await import(/* @vite-ignore */ bundleUrl);
 			dispose = mod.initBabylon(canvas).dispose;
 		} catch (e) {

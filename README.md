@@ -72,11 +72,59 @@
 npm install
 ```
 
+#### (중요) 최초 1회 전제: web “빌드 환경”이 필요한 모드가 있음
+
+- `npm run dev:3d`는 **web을 빌드 산출물(server)로 실행**하면서 3D만 dev 코드로 붙이는 모드입니다.
+- 따라서 최소 1회는 아래를 실행해 `web/build`가 있어야 합니다:
+
+```bash
+npm run build:all
+```
+
+#### dev / start 동작 정의(요구사항 기준)
+
+이 레포는 아래 목표를 만족하도록 구성되어 있습니다.
+
+- `dev:all`: **web + 3d 둘 다 “개발중 코드”**로 합쳐서 구동
+- `dev:3d`: **web은 “빌드된 환경”**, 3d만 “개발중 코드”로 합쳐서 구동
+- `dev:web`: **3d는 “빌드된 환경”**, web만 “개발중 코드”로 합쳐서 구동
+- `start:all`: web + 3d **둘 다 최신 빌드 산출물**로 합쳐서 구동
+- `start:web`: web만 **최신 빌드**, 3d는 **가장 최근 빌드**를 합쳐서 구동
+- `start:3d`: 3d만 **최신 빌드**, web은 **가장 최근 빌드**를 합쳐서 구동
+
+#### 포트/접속 URL
+
+- **web(dev)**: `http://localhost:5174/`
+- **3d(dev)**: `http://localhost:5173/` (web에서 3d dev 모듈을 불러오기 위해 CORS/고정 포트 사용)
+- **web(build server)**: `http://127.0.0.1:4173/`
+
+> 주의: `dev:*` 또는 `start:*` 프로세스는 포트를 점유합니다. 다른 모드를 실행하기 전에 기존 실행을 종료해야 포트 충돌이 안 납니다.
+
+#### 예시 0) 개발 모드 3종
+
+- **web + 3d 모두 개발중 코드로 합쳐서(`dev:all`)**
+
+```bash
+npm run dev:all
+```
+
+- **web은 빌드 환경 + 3d만 개발중 코드(`dev:3d`)**
+
+```bash
+npm run dev:3d
+```
+
+- **3d는 빌드 환경 + web만 개발중 코드(`dev:web`)**
+
+```bash
+npm run dev:web
+```
+
 #### 예시 A) 1) 전체 빌드 1회 → 실행
 
 ```bash
 npm run build:all
-npm run start:web
+npm run start:all
 ```
 
 - 브라우저에서 `/`에 접속하면 3D 캔버스가 보입니다.
@@ -88,7 +136,6 @@ npm run start:web
 2) web만 빌드 & 실행:
 
 ```bash
-npm run build:web
 npm run start:web
 ```
 
@@ -98,33 +145,13 @@ npm run start:web
 #### 예시 C) 2) 3d만 수정 → 3) 3d만 빌드 → 4) 실행 시 3d 변경 반영(웹 재빌드 없음)
 
 1) `3d/src/bundle.ts`에서 예: 배경색/메시/라이트 등을 변경
-2) 3d만 빌드:
+2) 3d만 최신화해서 실행:
 
 ```bash
-npm run build:3d
-```
-
-3) (이미 web을 한 번이라도 빌드해서 `web/build`가 있다면) web은 재빌드 없이 실행:
-
-```bash
-npm run start:web
+npm run start:3d
 ```
 
 - `build:3d`가 `web/build/client/3d` 아래 파일을 교체하므로, **web 재빌드 없이** 3D 변경이 반영됩니다.
-
-#### 개발 서버(선택)
-
-- **web 개발**:
-
-```bash
-npm run dev:web
-```
-
-- **3d 개발(3d 단독 플레이그라운드)**:
-
-```bash
-npm run dev:3d
-```
 
 ---
 
@@ -177,11 +204,16 @@ npm run dev:3d
 #### 3) web에서 3d 번들을 런타임 import로 로드하기
 
 - web 코드에서:
-  - `const bundleUrl = new URL('/3d/bundle.js', window.location.origin).toString();`
+  - 기본: `const bundleUrl = new URL('/3d/bundle.js', window.location.origin).toString();`
   - `await import(/* @vite-ignore */ bundleUrl);`
 - 중요한 점:
   - **정적 import 금지**(정적 import를 하면 web 빌드가 3d에 종속됨)
   - 번들 파일은 반드시 web이 서비스하는 경로(`/3d/bundle.js`)에 존재해야 함
+
+추가로 이 레포는 “하이브리드 dev”를 위해 `THREED_BUNDLE_URL` 환경변수를 지원합니다.
+
+- 예: `THREED_BUNDLE_URL=http://localhost:5173/src/bundle.ts`
+- 구현: `web/src/hooks.server.ts`가 `window.__THREED_BUNDLE_URL__`로 주입하고, 페이지에서 그 값을 우선 사용합니다.
 
 #### 4) 3d 산출물을 web에 “복사(sync)”하는 스크립트 추가
 
@@ -209,7 +241,39 @@ npm run dev:3d
 - **`npm run build:all`**: 3d 빌드 → `web/static/3d`로 복사 → web 빌드
 - **`npm run build:web`**: `web/static/3d`로 복사 → web만 빌드
 - **`npm run build:3d`**: 3d만 빌드 → `web/build/client/3d`(+ `web/static/3d`)로 복사
-- **`npm run start:web`**: 빌드된 web 실행(adapter-node)
-- **`npm run start:all`**: (별칭) 전체 실행 = `start:web` (web이 3d 번들을 로드하므로 “전체”가 됨)
-- **`npm run start:3d`**: 3d 단독 미리보기(플레이그라운드)
-- **`npm run dev:all`**: web/3d dev 서버를 동시에 실행
+- **`npm run start:all`**: 최신 web+3d 빌드 후 실행
+- **`npm run start:web`**: 최신 web 빌드 후 실행(3d는 최근 빌드 사용)
+- **`npm run start:3d`**: 최신 3d 빌드 후 실행(web은 최근 빌드 사용)
+- **`npm run dev:all`**: web(dev)+3d(dev) 합쳐서 실행
+- **`npm run dev:web`**: web(dev) + 3d(최근 빌드) 합쳐서 실행
+- **`npm run dev:3d`**: web(최근 빌드) + 3d(dev) 합쳐서 실행
+
+#### 각 명령이 “어떤 서버를 켜는지” + “어느 URL로 봐야 합쳐진 화면인지”
+
+- **web(dev) 서버**: SvelteKit dev 서버(소스코드 기반). 기본 접속 `http://localhost:5174/`
+- **3d(dev) 서버**: Vite dev 서버(소스코드 기반). 기본 접속 `http://localhost:5173/`
+- **web(build) 서버**: SvelteKit adapter-node 빌드 산출물(`web/build`)을 node로 실행. 기본 접속 `http://127.0.0.1:4173/`
+
+명령별로 “합쳐진 화면(web 안에 3D)”을 보려면 아래 URL로 접속하세요.
+
+- **`npm run dev:web`**
+  - 켜지는 서버: **web(dev)** (5174)
+  - 3D 로드 방식: **최근 빌드된 3D 번들**을 `web/static/3d`에서 서빙(`/3d/bundle.js`)
+  - 합쳐진 화면 접속: `http://localhost:5174/`
+
+- **`npm run dev:3d`**
+  - 켜지는 서버: **web(build)** (4173) + **3d(dev)** (5173) → *서버가 2개 뜹니다*
+  - 3D 로드 방식: web이 3d(dev)의 모듈을 직접 로드 (`THREED_BUNDLE_URL=http://localhost:5173/src/bundle.ts`)
+  - 합쳐진 화면 접속(중요): `http://127.0.0.1:4173/`
+  - 참고: `http://localhost:5173/`로 들어가면 **3d 단독(dev) 화면**이 보이는 게 정상입니다.
+
+- **`npm run dev:all`**
+  - 켜지는 서버: **web(dev)** (5174) + **3d(dev)** (5173) → *서버가 2개 뜹니다*
+  - 3D 로드 방식: web이 3d(dev)의 모듈을 직접 로드 (`THREED_BUNDLE_URL=http://localhost:5173/src/bundle.ts`)
+  - 합쳐진 화면 접속: `http://localhost:5174/`
+
+- **`npm run start:all` / `npm run start:web` / `npm run start:3d`**
+  - 켜지는 서버: **web(build)** (4173)
+  - 합쳐진 화면 접속: `http://127.0.0.1:4173/`
+
+> 주의: 위 서버들은 포트를 점유하므로, 다른 모드를 실행하기 전 기존 프로세스를 종료하지 않으면 포트 충돌이 날 수 있습니다.
